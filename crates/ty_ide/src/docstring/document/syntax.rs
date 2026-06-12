@@ -121,11 +121,15 @@ fn index_after_code_span_or_opening_run(text: &str, index: usize) -> Option<usiz
 ///
 /// For example, in `["- item", "  first", "  second", "next"]`, the block at index 0 ends
 /// at index 3.
-pub(super) fn container_block_end(lines: &[ParsedLine<'_>], index: usize) -> Option<usize> {
-    let marker = lines.get(index)?;
-    if !is_rest_directive_marker(marker.text)
-        && !is_field_list_marker(marker.text)
-        && !starts_with_markdown_list_item(marker.text.trim_start())
+pub(super) fn container_block_end<T>(
+    lines: &[T],
+    index: usize,
+    line_parts: impl Fn(&T) -> (&str, TextSize),
+) -> Option<usize> {
+    let (marker_text, marker_indent) = line_parts(lines.get(index)?);
+    if !is_rest_directive_marker(marker_text)
+        && !is_field_list_marker(marker_text)
+        && !starts_with_markdown_list_item(marker_text.trim_start())
     {
         return None;
     }
@@ -133,8 +137,8 @@ pub(super) fn container_block_end(lines: &[ParsedLine<'_>], index: usize) -> Opt
     Some(
         (index + 1..lines.len())
             .find(|&end| {
-                let line = lines[end];
-                !line.text.trim().is_empty() && line.indent <= marker.indent
+                let (text, indent) = line_parts(&lines[end]);
+                !text.trim().is_empty() && indent <= marker_indent
             })
             .unwrap_or(lines.len()),
     )

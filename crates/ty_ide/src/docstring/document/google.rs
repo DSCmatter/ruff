@@ -257,7 +257,7 @@ impl<'a> Parser<'a> {
         if self.scanner.consume_preformatted_line(line.text) {
             return next_index;
         }
-        if let Some(end) = container_block_end(lines, index) {
+        if let Some(end) = container_block_end(lines, index, |line| (line.text, line.indent)) {
             return end;
         }
 
