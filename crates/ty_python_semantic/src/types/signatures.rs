@@ -4139,7 +4139,7 @@ impl<'db> Parameters<'db> {
         }
 
         if expanded {
-            Self::new(db, parameters)
+            Self::from_annotation(db, parameters)
         } else {
             self.clone()
         }
