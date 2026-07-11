@@ -37,8 +37,8 @@ use ruff_text_size::{TextRange, TextSize};
 use super::SectionKind;
 use super::preformatted::PreformattedBlockScanner;
 use super::syntax::{
-    ParsedLine, container_block_end, parse_parenthesized_type, parsed_lines,
-    split_once_unbracketed_colon,
+    ParsedLine, container_block_end, find_backtick_run, is_backtick_run_escaped,
+    markdown_code_span, parsed_lines, split_once_at_top_level_colon, split_trailing_parenthetical,
 };
 
 /// Returns parameter documentation from recognized Google-style parameter sections.
@@ -156,12 +156,69 @@ fn extend_parameter_documentation(parameters: &mut Parameters, lines: &[ParsedLi
 
 /// Parses a parameter item into its display name and description.
 fn parse_parameter(line: &str) -> Option<(&str, &str)> {
-    let (name, description) = split_once_unbracketed_colon(line)?;
-    let (display_name, _) = parse_parenthesized_type(name.trim());
+    if let Some(split) = split_once_at_top_level_colon(line)
+        && let Some(parameter) = parse_parameter_split(split)
+    {
+        return Some(parameter);
+    }
+    if !line.contains('`') {
+        return None;
+    }
+
+    let mut fallback = None;
+    for (colon, _) in line.match_indices(':') {
+        let split = (&line[..colon], &line[colon + 1..]);
+        let Some(parameter) = parse_parameter_split(split) else {
+            continue;
+        };
+        if !has_unmatched_backtick_run(split.0) {
+            return Some(parameter);
+        }
+        fallback.get_or_insert(parameter);
+    }
+    fallback
+}
+
+fn parse_parameter_split<'a>(
+    (name, description): (&'a str, &'a str),
+) -> Option<(&'a str, &'a str)> {
+    let (display_name, _) = split_name_and_type(name.trim());
 
     google_parameter_names(display_name)
         .is_some()
         .then_some((display_name, description.trim()))
+}
+
+fn has_unmatched_backtick_run(text: &str) -> bool {
+    let mut search_from = TextSize::ZERO;
+    while let Some(run) = find_backtick_run(text, search_from) {
+        let index = run.start().to_usize();
+        if is_backtick_run_escaped(text, index) {
+            search_from = run.end();
+            continue;
+        }
+
+        let Some(span) = markdown_code_span(text, run) else {
+            return true;
+        };
+        search_from = span.end();
+    }
+    false
+}
+
+/// Splits a display name from a trailing parenthesized type.
+///
+/// For example, `"value (str)"` yields `("value", Some("str"))`.
+fn split_name_and_type(value: &str) -> (&str, Option<&str>) {
+    let Some((name, ty)) = split_trailing_parenthetical(value) else {
+        return (value, None);
+    };
+
+    if name.is_empty() || ty.is_empty() {
+        (value, None)
+    } else {
+        (name, Some(ty))
+    }
 }
 
 /// Returns whether `name` is a valid Python parameter name, including variadic prefixes.
@@ -366,7 +423,7 @@ fn section_item_indent(header: SectionHeader, line: ParsedLine<'_>) -> Option<Te
             SectionKind::Parameters | SectionKind::KeywordArguments | SectionKind::OtherParameters,
         ) => parse_parameter(trimmed).is_some(),
         HeaderKind::Structured(SectionKind::Attributes | SectionKind::Raises) => {
-            split_once_unbracketed_colon(trimmed).is_some_and(|(name, _)| !name.trim().is_empty())
+            split_once_at_top_level_colon(trimmed).is_some_and(|(name, _)| !name.trim().is_empty())
         }
         HeaderKind::Structured(SectionKind::Returns | SectionKind::Yields) => !trimmed.is_empty(),
         HeaderKind::Opaque => false,
@@ -382,7 +439,7 @@ fn is_inline_section_header(line: &str) -> bool {
         return false;
     }
 
-    let Some((name, description)) = split_once_unbracketed_colon(line) else {
+    let Some((name, description)) = split_once_at_top_level_colon(line) else {
         return false;
     };
 
@@ -562,6 +619,27 @@ Args:
         assert_snapshot!(display_parameters(raw), @"
         value:
           │ Quoted parenthesis.
+        ");
+    }
+
+    #[test]
+    fn parses_markdown_code_span_types() {
+        let raw = "\
+Args:
+    value (`(`): Parenthesis.
+    structural (`):value`): Structural characters.
+    lfs_files (`str): File extensions such as `.py`.
+    mixed (`oops ``(``): Mixed delimiters such as `.py`.";
+
+        assert_snapshot!(display_parameters(raw), @"
+        value:
+          │ Parenthesis.
+        structural:
+          │ Structural characters.
+        lfs_files:
+          │ File extensions such as `.py`.
+        mixed:
+          │ Mixed delimiters such as `.py`.
         ");
     }
 
