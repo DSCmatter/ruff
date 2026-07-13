@@ -4752,7 +4752,7 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             }
 
             impl<'db> TransparentCallableReturn<'db> {
-                fn is_same_as(self, db: &'db dyn Db, other: Self) -> bool {
+                fn matches(self, db: &'db dyn Db, other: Self) -> bool {
                     match (self, other) {
                         (Self::TypeVar(left), Self::TypeVar(right))
                         | (Self::Awaitable(left), Self::Awaitable(right)) => {
@@ -4818,7 +4818,7 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 return false;
             };
             parameter_callable_paramspec.is_same_typevar_as(db, return_callable_paramspec)
-                && parameter_callable_return.is_same_as(db, return_callable_return)
+                && parameter_callable_return.matches(db, return_callable_return)
         }
 
         // For FunctionLiteral, get the kind directly without computing the full signature.
