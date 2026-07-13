@@ -343,9 +343,9 @@ def i[T](x: T, cond: bool) -> T | list[T]:
     return x if cond else [x]
 ```
 
-## Generic calls with non-inferable return contexts
+## Generic calls with type-variable return contexts
 
-A return context that contains no concrete type information does not influence the specialization:
+A return context containing outer type variables can constrain the inner type variables:
 
 ```py
 from typing import overload
@@ -355,7 +355,7 @@ def f[A, B](x: tuple[A, B]) -> list[A]: ...
 @overload
 def f[A, B, C](x: tuple[A, B, C]) -> list[A]: ...
 def f[A, B, C](x: tuple[A, B] | tuple[A, B, C]) -> list[A | B | C]:
-    return f(x)  # error: [invalid-return-type]
+    return f(x)
 ```
 
 The return type context should preserve the independent key and value types of a generic `dict`
