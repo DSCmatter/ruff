@@ -307,7 +307,7 @@ impl ProjectFilesWalker {
     }
 }
 
-fn create_walker<I, T>(db: &dyn Db, paths: I) -> Option<WalkDirectoryBuilder>
+pub(crate) fn create_walker<I, T>(db: &dyn Db, paths: I) -> Option<WalkDirectoryBuilder>
 where
     I: IntoIterator<Item = T>,
     T: AsRef<SystemPath>,
